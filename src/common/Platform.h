@@ -72,11 +72,16 @@ Examples:
 - DAEMON_USE_ARCH_INTRINSICS_i686: i686 specific code, including asm code.
 - DAEMON_USE_ARCH_INTRINSICS_i686_sse: i686 SSE specific code.
 - DAEMON_USE_ARCH_INTRINSICS_i686_sse2: i686 SSE2 specific code.
+- DAEMON_USE_ARCH_INTRINSICS_ppc64: ppc64 specific code, including asm code.
+- DAEMON_USE_ARCH_INTRINSICS_ppc64_altivec: ppc64 AltiVec specific code.
+- DAEMON_USE_ARCH_INTRINSICS_ppc64_vsx: ppc64 VSX specific code.
 
 If a architecture inherits a feature from an parent architecture, the parent
 architecture name is used. For example on amd64, the definition enabling
 SSE code is DAEMON_USE_ARCH_INTRINSICS_i686_sse, enabling SSE code on both
-i686 with SSE and amd64.
+i686 with SSE and amd64. Similarly on ppc64el, the definition enabling
+VSX code is DAEMON_USE_ARCH_INTRINSICS_ppc64_vsx, enabling VSX code on both
+ppc64 with VSX and ppc64el.
 
 The definitions for the architecture itself are automatically set by CMake. */
 
@@ -122,6 +127,15 @@ The definitions for the architecture itself are automatically set by CMake. */
 		#if defined(__SSE2__) || defined(MSVC_SSE2)
 			#define DAEMON_USE_ARCH_INTRINSICS_i686_sse2
 		#endif
+
+		#if defined(DAEMON_USE_ARCH_INTRINSICS_ppc64)
+			#if defined(__VSX__)
+				#define DAEMON_USE_ARCH_INTRINSICS_ppc64_vsx
+				#define DAEMON_USE_ARCH_INTRINSICS_ppc64_altivec
+			#elif defined(__ALTIVEC__)
+				#define DAEMON_USE_ARCH_INTRINSICS_ppc64_altivec
+			#endif
+		#endif
 	#endif
 
 	// Include intrinsics-specific headers.
@@ -132,6 +146,13 @@ The definitions for the architecture itself are automatically set by CMake. */
 
 	#if defined(DAEMON_USE_ARCH_INTRINSICS_i686_sse2)
 		#include <emmintrin.h>
+	#endif
+
+	#if defined(DAEMON_USE_ARCH_INTRINSICS_ppc64_altivec)
+		#include <altivec.h>
+		// Undefine AltiVec keywords that conflict with C++ identifiers.
+		#undef bool
+		#undef pixel
 	#endif
 #endif
 
