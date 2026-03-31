@@ -1486,8 +1486,68 @@ inline vec_t VectorNormalize2( const vec3_t v, vec3_t out )
 	inline void TransEndLerp( transform_t *t ) {
 		t->sseRot = sseQuatNormalize( t->sseRot );
 	}
+#elif defined(DAEMON_USE_ARCH_INTRINSICS_ppc64_vsx)
+/* VSX shuffle using vec_perm with big-endian element indices.
+   GCC/Clang on ppc64le automatically handle the byte-order reversal. */
+#define VSX_PERM_BYTE(i) \
+	(unsigned char)(4*(i)), (unsigned char)(4*(i)+1), \
+	(unsigned char)(4*(i)+2), (unsigned char)(4*(i)+3)
+
+#define vsxSwizzle(a, x, y, z, w) \
+	vec_perm((a), (a), \
+		((__vector unsigned char){ \
+			VSX_PERM_BYTE(x), VSX_PERM_BYTE(y), \
+			VSX_PERM_BYTE(z), VSX_PERM_BYTE(w) }))
+
+	inline __vector float unitQuat() {
+		return (__vector float){ 0.0f, 0.0f, 0.0f, 1.0f };
+	}
+	inline __vector float vsxLoadInts( const int vec[4] ) {
+		return vec_xl( 0, (const float *)vec );
+	}
+	inline __vector float mask_0000() {
+		return vec_splats( 0.0f );
+	}
+
+	// {first.x, first.y, first.z, second.w}
+	inline __vector float first_XYZ_second_W(
+			__vector float first, __vector float second )
+	{
+		__vector unsigned int mask = { 0, 0, 0, 0xFFFFFFFF };
+		return vec_sel( first, second, mask );
+	}
+
+	inline __vector float sign_000W() {
+		alignas(16) static const unsigned int bits[4] = { 0, 0, 0, 0x80000000 };
+		return vec_xl( 0, (const float *)bits );
+	}
+	inline __vector float sign_XYZ0() {
+		alignas(16) static const unsigned int bits[4] = {
+			0x80000000, 0x80000000, 0x80000000, 0 };
+		return vec_xl( 0, (const float *)bits );
+	}
+	inline __vector float sign_XYZW() {
+		alignas(16) static const unsigned int bits[4] = {
+			0x80000000, 0x80000000, 0x80000000, 0x80000000 };
+		return vec_xl( 0, (const float *)bits );
+	}
+
+	inline __vector float vsxLoadVec3( const vec3_t vec ) {
+		// Load 3 floats into a vector, with W = 0.
+		__vector float v = vec_splats( 0.0f );
+		v = vec_insert( vec[0], v, 0 );
+		v = vec_insert( vec[1], v, 1 );
+		v = vec_insert( vec[2], v, 2 );
+		return v;
+	}
+	inline void vsxStoreVec3( __vector float in, vec3_t out ) {
+		out[0] = vec_extract( in, 0 );
+		out[1] = vec_extract( in, 1 );
+		out[2] = vec_extract( in, 2 );
+	}
+
 #else
-	// The non-SSE variants are in q_math.cpp file.
+	// The non-SSE/non-VSX variants are in q_math.cpp file.
 	void TransInit( transform_t *t );
 
 	void TransformPoint( const transform_t *t, const vec3_t in, vec3_t out );
