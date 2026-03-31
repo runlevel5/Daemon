@@ -205,6 +205,157 @@ TEST(QMathTransformTest, TransInverse)
         {-0.4833702, 0.42157, 0.7551386, -0.1356377}, {1.244436,1.155842,-0.5278334}, 0.4);
 }
 
+TEST(QMathTransformTest, TransLerp)
+{
+    // Lerp between two transforms with equal weight.
+    const transform_t a = MakeTransform(
+        {0, 0, 0, 1}, {10, 0, 0}, 2);
+    const transform_t b = MakeTransform(
+        {0, 0, 0, 1}, {0, 10, 0}, 4);
+    transform_t out;
+    TransStartLerp(&out);
+    TransAddWeight(0.5, &a, &out);
+    TransAddWeight(0.5, &b, &out);
+    TransEndLerp(&out);
+    ExpectTransformEqual(out, {0, 0, 0, 1}, {5, 5, 0}, 3);
+}
+
+TEST(QMathTransformTest, TransLerpSingleWeight)
+{
+    // Lerp with a single transform at full weight should be identity-like.
+    const transform_t a = MakeTransform(
+        {0.3155654, 0.121273, 0.7211766, 0.6046616}, {-11, -26, 55}, 1.2);
+    transform_t out;
+    TransStartLerp(&out);
+    TransAddWeight(1.0, &a, &out);
+    TransEndLerp(&out);
+    ExpectTransformEqual(out,
+        {0.3155654, 0.121273, 0.7211766, 0.6046616}, {-11, -26, 55}, 1.2);
+}
+
+TEST(QMathTest, MatrixMultiply)
+{
+    // Multiply two 4x4 matrices with known values.
+    // A = simple translation-like matrix (identity with last column offset)
+    const matrix_t a = {
+        1, 0, 0, 0,
+        0, 1, 0, 0,
+        0, 0, 1, 0,
+        2, 3, 4, 1
+    };
+    // B = simple scale matrix
+    const matrix_t b = {
+        2, 0, 0, 0,
+        0, 3, 0, 0,
+        0, 0, 4, 0,
+        0, 0, 0, 1
+    };
+    matrix_t out;
+    MatrixMultiply(a, b, out);
+    // out[j*4+i] = sum_k b[j*4+k] * a[k*4+i]
+    const matrix_t expected = {
+        2, 0, 0, 0,
+        0, 3, 0, 0,
+        0, 0, 4, 0,
+        4, 9, 16, 1
+    };
+    EXPECT_THAT(out, Pointwise(FloatNear(1e-6), expected));
+}
+
+TEST(QMathTest, MatrixMultiplyGeneral)
+{
+    // Non-trivial matrices
+    const matrix_t a = {
+        0.5, 0.1, 0.0, 0.0,
+        0.2, 0.6, 0.0, 0.0,
+        0.0, 0.0, 1.0, 0.0,
+        1.0, 2.0, 3.0, 1.0
+    };
+    const matrix_t b = {
+        1.0, 0.0, 0.3, 0.0,
+        0.0, 1.0, 0.0, 0.0,
+        0.4, 0.0, 1.0, 0.0,
+        0.0, 5.0, 0.0, 1.0
+    };
+    matrix_t out;
+    MatrixMultiply(a, b, out);
+    // out[j*4+i] = sum_k b[j*4+k] * a[k*4+i]
+    const matrix_t expected = {
+        0.5f,  0.1f,  0.3f,  0.0f,
+        0.2f,  0.6f,  0.0f,  0.0f,
+        0.2f,  0.04f, 1.0f,  0.0f,
+        2.0f,  5.0f,  3.0f,  1.0f
+    };
+    EXPECT_THAT(out, Pointwise(FloatNear(1e-5), expected));
+}
+
+TEST(QMathTest, BoxOnPlaneSideInFront)
+{
+    // Box fully in front of the plane.
+    cplane_t plane;
+    VectorSet(plane.normal, 0, 0, 1);
+    plane.dist = -10;  // plane at z=-10
+    plane.type = 3;    // non-axial (force general path on scalar fallback)
+    SetPlaneSignbits(&plane);
+
+    const vec3_t mins = { -1, -1, 0 };
+    const vec3_t maxs = { 1, 1, 2 };
+    EXPECT_EQ(BoxOnPlaneSide(mins, maxs, &plane), 1);
+}
+
+TEST(QMathTest, BoxOnPlaneSideBehind)
+{
+    // Box fully behind the plane.
+    cplane_t plane;
+    VectorSet(plane.normal, 0, 0, 1);
+    plane.dist = 10;   // plane at z=10
+    plane.type = 3;
+    SetPlaneSignbits(&plane);
+
+    const vec3_t mins = { -1, -1, 0 };
+    const vec3_t maxs = { 1, 1, 2 };
+    EXPECT_EQ(BoxOnPlaneSide(mins, maxs, &plane), 2);
+}
+
+TEST(QMathTest, BoxOnPlaneSideCross)
+{
+    // Box straddles the plane.
+    cplane_t plane;
+    VectorSet(plane.normal, 0, 0, 1);
+    plane.dist = 1;    // plane at z=1
+    plane.type = 3;
+    SetPlaneSignbits(&plane);
+
+    const vec3_t mins = { -1, -1, 0 };
+    const vec3_t maxs = { 1, 1, 2 };
+    EXPECT_EQ(BoxOnPlaneSide(mins, maxs, &plane), 3);
+}
+
+TEST(QMathTest, BoxOnPlaneSideDiagonal)
+{
+    // Diagonal plane normal.
+    cplane_t plane;
+    VectorSet(plane.normal, 0.57735f, 0.57735f, 0.57735f);  // ~(1,1,1)/sqrt(3)
+    plane.dist = 0;
+    plane.type = 3;
+    SetPlaneSignbits(&plane);
+
+    // Box at positive octant: should be fully in front
+    const vec3_t mins1 = { 1, 1, 1 };
+    const vec3_t maxs1 = { 2, 2, 2 };
+    EXPECT_EQ(BoxOnPlaneSide(mins1, maxs1, &plane), 1);
+
+    // Box at negative octant: should be fully behind
+    const vec3_t mins2 = { -2, -2, -2 };
+    const vec3_t maxs2 = { -1, -1, -1 };
+    EXPECT_EQ(BoxOnPlaneSide(mins2, maxs2, &plane), 2);
+
+    // Box spanning origin: should cross
+    const vec3_t mins3 = { -1, -1, -1 };
+    const vec3_t maxs3 = { 1, 1, 1 };
+    EXPECT_EQ(BoxOnPlaneSide(mins3, maxs3, &plane), 3);
+}
+
 TEST(QSharedMathTest, InverseSquareRoot)
 {
     constexpr float relativeTolerance = 5.0e-6;
