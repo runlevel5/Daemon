@@ -253,11 +253,12 @@ TEST(QMathTest, MatrixMultiply)
     matrix_t out;
     MatrixMultiply(a, b, out);
     // out[j*4+i] = sum_k b[j*4+k] * a[k*4+i]
+    // Row 3 of b = {0,0,0,1}, so out_row3 = 1*a_row3 = {2,3,4,1}.
     const matrix_t expected = {
         2, 0, 0, 0,
         0, 3, 0, 0,
         0, 0, 4, 0,
-        4, 9, 16, 1
+        2, 3, 4, 1
     };
     EXPECT_THAT(out, Pointwise(FloatNear(1e-6), expected));
 }
