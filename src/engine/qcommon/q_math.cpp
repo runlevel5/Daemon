@@ -762,6 +762,25 @@ int BoxOnPlaneSide( const vec3_t emins, const vec3_t emaxs, const cplane_t *p )
 	float dist[ 2 ];
 	dist[ 0 ] = pmaxv[ 0 ] + pmaxv[ 1 ] + pmaxv[ 2 ];
 	dist[ 1 ] = pminv[ 0 ] + pminv[ 1 ] + pminv[ 2 ];
+#elif defined(DAEMON_USE_ARCH_INTRINSICS_ppc64_vsx)
+	auto mins = vsxLoadVec3( emins );
+	auto maxs = vsxLoadVec3( emaxs );
+	auto normal = vsxLoadVec3( p->normal );
+
+	auto prod0 = vec_mul( maxs, normal );
+	auto prod1 = vec_mul( mins, normal );
+
+	auto pmax = vec_max( prod0, prod1 );
+	auto pmin = vec_min( prod0, prod1 );
+
+	alignas(16) vec4_t pmaxv;
+	alignas(16) vec4_t pminv;
+	vec_st( pmax, 0, pmaxv );
+	vec_st( pmin, 0, pminv );
+
+	float dist[ 2 ];
+	dist[ 0 ] = pmaxv[ 0 ] + pmaxv[ 1 ] + pmaxv[ 2 ];
+	dist[ 1 ] = pminv[ 0 ] + pminv[ 1 ] + pminv[ 2 ];
 #else
 	ASSERT_LT( p->signbits, 8 );
 
@@ -1729,6 +1748,33 @@ void MatrixMultiply( const matrix_t a, const matrix_t b, matrix_t out )
 		_t3 = _mm_add_ps( _t2, _t3 );
 
 		_mm_storeu_ps( &out[ i * 4 ], _t3 );
+	}
+
+#elif defined(DAEMON_USE_ARCH_INTRINSICS_ppc64_vsx)
+	__vector float _t4 = vec_xl( 0, &a[ 0 ] );
+	__vector float _t5 = vec_xl( 0, &a[ 4 ] );
+	__vector float _t6 = vec_xl( 0, &a[ 8 ] );
+	__vector float _t7 = vec_xl( 0, &a[ 12 ] );
+
+	for ( int i = 0; i < 4; i++ )
+	{
+		__vector float _t0 = vec_splats( b[ i * 4 + 0 ] );
+		_t0 = vec_mul( _t4, _t0 );
+
+		__vector float _t1 = vec_splats( b[ i * 4 + 1 ] );
+		_t1 = vec_mul( _t5, _t1 );
+
+		__vector float _t2 = vec_splats( b[ i * 4 + 2 ] );
+		_t2 = vec_mul( _t6, _t2 );
+
+		__vector float _t3 = vec_splats( b[ i * 4 + 3 ] );
+		_t3 = vec_mul( _t7, _t3 );
+
+		_t1 = vec_add( _t0, _t1 );
+		_t2 = vec_add( _t1, _t2 );
+		_t3 = vec_add( _t2, _t3 );
+
+		vec_xst( _t3, 0, &out[ i * 4 ] );
 	}
 
 #else
@@ -3193,8 +3239,8 @@ void QuatTransformVectorInverse( const quat_t q, const vec3_t in, vec3_t out )
 	VectorAdd( out, tmp2, out );
 }
 
-// The SSE variants are inline functions in q_shared.h file.
-#if !defined(DAEMON_USE_ARCH_INTRINSICS_i686_sse)
+// The SSE/VSX variants are inline functions in q_shared.h file.
+#if !defined(DAEMON_USE_ARCH_INTRINSICS_i686_sse) && !defined(DAEMON_USE_ARCH_INTRINSICS_ppc64_vsx)
 // create an identity transform
 void TransInit( transform_t *t )
 {
