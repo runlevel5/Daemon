@@ -267,6 +267,25 @@ void  Com_Free_Aligned( void *ptr );
 #ifdef __GNUC__
 #pragma GCC diagnostic pop
 #endif
+#elif defined(DAEMON_USE_ARCH_INTRINSICS_ppc64_vsx)
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wpedantic"
+#endif
+	union alignas(16) transform_t {
+		struct {
+			quat_t rot;
+			vec3_t trans;
+			vec_t  scale;
+		};
+		struct {
+			__vector float vsxRot;
+			__vector float vsxTransScale;
+		};
+	};
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
 #else
 	struct alignas(16) transform_t {
 		quat_t rot;
