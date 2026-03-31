@@ -409,6 +409,16 @@ WARN_UNUSED_RESULT inline float Q_rsqrt_fast( const float n )
 	float o;
 	// The SSE rsqrt relative error bound is 3.7×10⁻⁴.
 	_mm_store_ss( &o, _mm_rsqrt_ss( _mm_load_ss( &n ) ) );
+#elif defined(DAEMON_USE_ARCH_INTRINSICS_ppc64_vsx)
+	// VSX vrsqrtefp relative error bound is ~5×10⁻⁵ (14 bits).
+	__vector float vn = vec_splats( n );
+	__vector float vr = vec_rsqrte( vn );
+	float o = vec_extract( vr, 0 );
+#elif defined(DAEMON_USE_ARCH_INTRINSICS_ppc64)
+	// Scalar frsqrtes for ppc64 without VSX (POWER5+).
+	// Relative error bound is ~5×10⁻⁵ (14 bits).
+	float o;
+	__asm__( "frsqrtes %0, %1" : "=f"( o ) : "f"( n ) );
 #else
 	/* Magic constants by Jan Kadlec, with a relative error bound
 	of 6.50196699×10⁻⁴.
