@@ -1546,6 +1546,63 @@ inline vec_t VectorNormalize2( const vec3_t v, vec3_t out )
 		out[2] = vec_extract( in, 2 );
 	}
 
+	// returns the dot product in all 4 elements
+	inline __vector float vsxDot4( __vector float a, __vector float b ) {
+		__vector float prod = vec_mul( a, b );
+		__vector float sum1 = vec_add( prod, vsxSwizzle( prod, 1,0,3,2 ) );
+		__vector float sum2 = vec_add( sum1, vsxSwizzle( sum1, 2,3,0,1 ) );
+		return sum2;
+	}
+
+	// returns 0 in w component if input w's are finite
+	inline __vector float vsxCrossProduct( __vector float a,
+			__vector float b ) {
+		__vector float a_yzx = vsxSwizzle( a, 1,2,0,3 );
+		__vector float b_yzx = vsxSwizzle( b, 1,2,0,3 );
+		__vector float c_zxy = vec_sub( vec_mul( a, b_yzx ),
+						vec_mul( a_yzx, b ) );
+		return vsxSwizzle( c_zxy, 1,2,0,3 );
+	}
+	inline __vector float vsxQuatMul( __vector float a,
+			__vector float b ) {
+		__vector float a1 = vsxSwizzle( a, 3,3,3,3 );
+		__vector float c1 = vec_mul( a1, b );
+		__vector float a2 = vsxSwizzle( a, 0,1,2,0 );
+		__vector float b2 = vsxSwizzle( b, 3,3,3,0 );
+		__vector float c2 = vec_xor( vec_mul( a2, b2 ), sign_000W() );
+		__vector float a3 = vsxSwizzle( a, 1,2,0,1 );
+		__vector float b3 = vsxSwizzle( b, 2,0,1,1 );
+		__vector float c3 = vec_xor( vec_mul( a3, b3 ), sign_000W() );
+		__vector float a4 = vsxSwizzle( a, 2,0,1,2 );
+		__vector float b4 = vsxSwizzle( b, 1,2,0,2 );
+		__vector float c4 = vec_mul( a4, b4 );
+		return vec_add( vec_add( c1, c2 ), vec_sub( c3, c4 ) );
+	}
+	inline __vector float vsxQuatNormalize( __vector float q ) {
+		__vector float p = vec_mul( q, q );
+		__vector float t, h;
+		p = vec_add( vsxSwizzle( p, 0,0,2,2 ),
+			     vsxSwizzle( p, 1,1,3,3 ) );
+		p = vec_add( vsxSwizzle( p, 0,0,0,0 ),
+			     vsxSwizzle( p, 2,2,2,2 ) );
+		t = vec_rsqrte( p );
+		h = vec_mul( vec_splats( 0.5f ), t );
+		t = vec_mul( vec_mul( t, t ), p );
+		t = vec_sub( vec_splats( 3.0f ), t );
+		t = vec_mul( h, t );
+		return vec_mul( q, t );
+	}
+	// rotates (3-dimensional) vec. vec's w component is unchanged
+	inline __vector float vsxQuatTransform( __vector float q,
+			__vector float vec ) {
+		__vector float t, t2;
+		t = vsxCrossProduct( q, vec );
+		t = vec_add( t, t );
+		t2 = vsxCrossProduct( q, t );
+		t = vec_mul( vsxSwizzle( q, 3,3,3,3 ), t );
+		return vec_add( vec_add( vec, t2 ), t );
+	}
+
 #else
 	// The non-SSE/non-VSX variants are in q_math.cpp file.
 	void TransInit( transform_t *t );
