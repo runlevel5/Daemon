@@ -1603,6 +1603,111 @@ inline vec_t VectorNormalize2( const vec3_t v, vec3_t out )
 		return vec_add( vec_add( vec, t2 ), t );
 	}
 
+	inline void TransInit( transform_t *t ) {
+		__vector float u = unitQuat();
+		t->vsxRot = u;
+		t->vsxTransScale = u;
+	}
+	inline void TransformPoint(
+			const transform_t *t, const vec3_t in, vec3_t out ) {
+		__vector float ts = t->vsxTransScale;
+		__vector float tmp = vsxQuatTransform( t->vsxRot, vsxLoadVec3( in ) );
+		tmp = vec_mul( tmp, vsxSwizzle( ts, 3,3,3,3 ) );
+		tmp = vec_add( tmp, ts );
+		vsxStoreVec3( tmp, out );
+	}
+	inline void TransformNormalVector(
+			const transform_t *t, const vec3_t in, vec3_t out ) {
+		__vector float v = vsxLoadVec3( in );
+		v = vsxQuatTransform( t->vsxRot, v );
+		vsxStoreVec3( v, out );
+	}
+	inline void TransInitRotationQuat( const quat_t quat,
+						  transform_t *t ) {
+		t->vsxRot = vec_xl( 0, quat );
+		t->vsxTransScale = unitQuat();
+	}
+	inline void TransInitTranslation( const vec3_t vec, transform_t *t ) {
+		__vector float v = vsxLoadVec3( vec );
+		t->vsxRot = unitQuat();
+		t->vsxTransScale = vec_or( v, unitQuat() );
+	}
+	inline void TransInitScale( float factor, transform_t *t ) {
+		t->vsxRot = unitQuat();
+		t->vsxTransScale = (__vector float){ 0.0f, 0.0f, 0.0f, factor };
+	}
+	inline void TransInsRotationQuat( const quat_t quat, transform_t *t ) {
+		__vector float q = vec_xl( 0, quat );
+		t->vsxRot = vsxQuatMul( t->vsxRot, q );
+	}
+	inline void TransAddRotationQuat( const quat_t quat, transform_t *t ) {
+		__vector float q = vec_xl( 0, quat );
+		t->vsxRot = vsxQuatMul( q, t->vsxRot );
+		t->vsxTransScale = vsxQuatTransform( q, t->vsxTransScale );
+	}
+	inline void TransInsScale( float factor, transform_t *t ) {
+		t->scale *= factor;
+	}
+	inline void TransAddScale( float factor, transform_t *t ) {
+		__vector float f = vec_splats( factor );
+		t->vsxTransScale = vec_mul( f, t->vsxTransScale );
+	}
+	inline void TransInsTranslation(
+			const vec3_t vec, transform_t *t ) {
+		__vector float v = vsxLoadVec3( vec );
+		__vector float ts = t->vsxTransScale;
+		v = vsxQuatTransform( t->vsxRot, v );
+		v = vec_mul( v, vsxSwizzle( ts, 3,3,3,3 ) );
+		t->vsxTransScale = vec_add( ts, v );
+	}
+	inline void TransAddTranslation(
+			const vec3_t vec, transform_t *t ) {
+		__vector float v = vsxLoadVec3( vec );
+		t->vsxTransScale = vec_add( t->vsxTransScale, v );
+	}
+	inline void TransCombine( const transform_t *a,
+					 const transform_t *b,
+					 transform_t *out ) {
+		__vector float aRot = a->vsxRot;
+		__vector float aTS = a->vsxTransScale;
+		__vector float bRot = b->vsxRot;
+		__vector float bTS = b->vsxTransScale;
+		__vector float tmp = vsxQuatTransform( bRot, aTS );
+		tmp = vec_mul( tmp, vsxSwizzle( bTS, 3,3,3,3 ) );
+		__vector float bT = first_XYZ_second_W( bTS, mask_0000() );
+		out->vsxTransScale = vec_add( tmp, bT );
+		out->vsxRot = vsxQuatMul( bRot, aRot );
+	}
+	inline void TransInverse( const transform_t *in,
+					 transform_t *out ) {
+		__vector float rot = in->vsxRot;
+		__vector float ts = in->vsxTransScale;
+		__vector float invS = vec_re( vsxSwizzle( ts, 3,3,3,3 ) );
+		__vector float invRot = vec_xor( rot, sign_XYZ0() );
+		__vector float invT = vec_xor( ts, sign_XYZ0() );
+		__vector float tmp = vsxQuatTransform( invRot, invT );
+		tmp = vec_mul( tmp, invS );
+		out->vsxRot = invRot;
+		out->vsxTransScale = first_XYZ_second_W( tmp, invS );
+	}
+	inline void TransStartLerp( transform_t *t ) {
+		t->vsxRot = mask_0000();
+		t->vsxTransScale = mask_0000();
+	}
+	inline void TransAddWeight( float weight, const transform_t *a,
+					   transform_t *out ) {
+		__vector float w = vec_splats( weight );
+		__vector float d = vsxDot4( a->vsxRot, out->vsxRot );
+		out->vsxTransScale = vec_add( out->vsxTransScale,
+					      vec_mul( w, a->vsxTransScale ) );
+		w = vec_xor( w, vec_and( d, sign_XYZW() ) );
+		out->vsxRot = vec_add( out->vsxRot,
+				       vec_mul( w, a->vsxRot ) );
+	}
+	inline void TransEndLerp( transform_t *t ) {
+		t->vsxRot = vsxQuatNormalize( t->vsxRot );
+	}
+
 #else
 	// The non-SSE/non-VSX variants are in q_math.cpp file.
 	void TransInit( transform_t *t );
